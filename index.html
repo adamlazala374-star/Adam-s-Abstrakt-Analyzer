@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Call Center Data Analyzer</title>
+
+  <!-- External libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+
+  <style>
+    /* Cleaned up styling — adds drag/drop visuals, progress bars, cards */
+    :root{
+      --brand: #007bff;
+      --success: #28a745;
+      --danger: #dc3545;
+      --muted: #6c757d;
+      --bg: #f4f6f8;
+      --card: #fff;
+    }
+
+    html,body{height:100%;}
+    body{
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      margin:0;
+      background:linear-gradient(180deg,#f7fbff 0%,var(--bg) 100%);
+      color:#222;
+      padding:24px;
+      display:flex;
+      justify-content:center;
+    }
+
+    .container{
+      width:100%;
+      max-width:1200px;
+      background:var(--card);
+      border-radius:12px;
+      padding:22px;
+      box-shadow:0 6px 30px rgba(15,30,50,0.06);
+    }
+
+    h1{
+      margin:0 0 18px 0;
+      font-size:22px;
+      color:#0b2b53;
+      text-align:center;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:18px;
+    }
+
+    .card{
+      background:#fff;
+      border-radius:10px;
+      padding:14px;
+      border:1px solid rgba(15,30,50,0.04);
+    }
+
+    label{font-weight:600;margin-bottom:6px;display:block;color:#31425a}
+
+    .dropzone{
+      border:2px dashed rgba(3,86,252,0.12);
+      border-radius:8px;
+      padding:18px;
+      text-align:center;
+      min-height:90px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+      transition:background .15s, border-color .15s;
+      cursor:pointer;
+      background:#fbfdff;
+    }
+    .dropzone.dragover{background: #f0f8ff; border-color:var(--brand); box-shadow:0 6px 18px rgba(3,86,252,0.06)}
+    .dropzone small{color:var(--muted)}
+
+    input[type="file"]{display:none;}
+
+    .controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
+    button{
+      background:var(--brand);
+      color:#fff;
+      border:none;
+      padding:10px 14px;
+      border-radius:8px;
+      cursor:pointer;
+      font-weight:600;
+      box-shadow:0 6px 14px rgba(0,123,255,0.08);
+    }
+    button.ghost{background:transparent;color:var(--brand);border:1px solid rgba(3,86,252,0.08)}
+    button.warn{background:var(--danger)}
+    button.green{background:var(--success)}
+    button:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+
+    .status {margin-top:12px}
+    .status .msg{padding:10px;border-radius:8px}
+
+    .msg.info{background:#eaf6ff;color:#065a9d;border:1px solid #d3eeff}
+    .msg.success{background:#eafaf0;color:#145a2f;border:1px solid #d7f3dd}
+    .msg.error{background:#fff0f0;color:#882424;border:1px solid #ffd7d7}
+
+    .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:18px}
+    .summary-card{background:linear-gradient(180deg,#fff,#fbfdff);padding:12px;border-radius:8px;text-align:center;border:1px solid rgba(15,30,50,0.03)}
+    .summary-card h3{margin:0;font-size:13px;color:#30435a}
+    .summary-card .number{font-size:20px;font-weight:800;color:var(--brand);margin-top:6px}
+
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid #eef2f5;text-align:left}
+    th{background:#fbfdff; font-weight:700; color:#31425a}
+    tr:nth-child(even){background:#fcfdff}
+
+    .office-summary-table th{background:#f6f8fa}
+
+    .log-area{
+      max-height:160px;overflow:auto;padding:10px;border-radius:8px;background:#0b253f08;border:1px solid rgba(11,37,63,0.03)
+    }
+    .log-line{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace; font-size:12px;color:#223;}
+
+    .progress-wrap{display:flex;align-items:center;gap:10px;margin-top:10px}
+    progress{width:100%;height:16px;border-radius:6px;overflow:hidden}
+    .small{font-size:12px;color:var(--muted)}
+
+    .actions-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+
+    /* responsive */
+    @media (max-width:900px){
+      .grid-2{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Call Center Data Analyzer</h1>
+
+    <div class="grid-2">
+      <div class="card">
+        <label>Dialer Data (Convoso / Vici)</label>
+        <div id="dialerDrop" class="dropzone">
+          <div>
+            <strong id="dialerDropText">Drop a Dialer file here, or click to choose</strong>
+            <div style="height:6px"></div>
+            <small>Accepts .xlsx .xls .csv — first sheet processed</small>
+          </div>
+          <input type="file" id="dialerFile" accept=".xlsx,.xls,.csv" />
+        </div>
+
+        <div style="height:12px"></div>
+
+        <label>Abstrakt Data (Excel / CSV)</label>
+        <div id="abstraktDrop" class="dropzone">
+          <div>
+            <strong id="abstraktDropText">Drop an Abstrakt file here, or click to choose</strong>
+            <div style="height:6px"></div>
+            <small>Accepts .xlsx .xls .csv — first sheet processed</small>
+          </div>
+          <input type="file" id="abstraktFile" accept=".xlsx,.xls,.csv" />
+        </div>
+
+        <div class="controls">
+          <button id="processBtn" onclick="processFiles()">Process Data</button>
+          <button onclick="downloadResults()" class="ghost" id="downloadFullBtn">Download Full Excel Results</button>
+          <button onclick="downloadForBrittany()" class="ghost" id="downloadBrittanyBtn">Download for Brittany (Offshore Only)</button>
+          <button onclick="downloadOfficeComplianceCharts()" id="downloadPieChartsBtn" class="warn">Download All Office Pie Charts</button>
+        </div>
+
+        <div class="progress-wrap" style="margin-top:12px;">
+          <div style="flex:1">
+            <div class="small">File / Processing Progress</div>
+            <progress id="fileProgress" value="0" max="100"></progress>
+          </div>
+          <div style="width:120px;text-align:right" id="fileProgressPct">0%</div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div>
+          <label>Column Detection Logs</label>
+          <div class="log-area" id="columnLogs">
+            <div class="log-line">No processing yet — column logs will appear here after processing.</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div id="status" class="status"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0 0 8px 0">Results & Summaries</h3>
+            <div class="small">After processing, view summaries, outliers, per-office summaries and per-agent charts.</div>
+          </div>
+        </div>
+
+        <div id="results" style="display:none;margin-top:12px;">
+          <div class="summary" id="summary"></div>
+
+          <h4 style="margin-top:14px;margin-bottom:8px;">Compliance Outliers (&lt;50%)</h4>
+          <div id="outlierSummaries"></div>
+
+          <h4 style="margin-top:12px;margin-bottom:8px;">Office-Specific Summaries</h4>
+          <div id="allOfficeSummaries"></div>
+
+          <div style="margin-top:12px;">
+            <h4 style="margin-bottom:8px;">Detailed Agent Table</h4>
+            <div id="dataTable"></div>
+          </div>
+
+          <div style="height:8px"></div>
+
+          <div class="actions-row">
+            <button onclick="displayAllOfficeSummaries(processedData)" class="ghost">Refresh Office Summaries</button>
+            <button onclick="displayOutliers(processedData)" class="ghost">Refresh Outliers</button>
+          </div>
+
+          <div style="height:10px"></div>
+          <div class="progress-wrap">
+            <div style="flex:1">
+              <div class="small">Chart Generation Progress</div>
+              <progress id="chartProgress" value="0" max="100"></progress>
+            </div>
+            <div style="width:120px;text-align:right" id="chartProgressPct">0%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:18px"></div>
+
+  </div>
+
+  <!-- Hidden canvas for chart image generation -->
+  <canvas id="tempChartCanvas" style="display:none"></canvas>
+
+  <script>
+    // ---------- State ----------
+    let processedData = [];
+    let dialerData = null;
+    let abstraktData = null;
+    let aggregatedChartData = [];
+    let detectedColumnsLog = [];
+    let fileReadAbortFlag = false;
+
+    // ---------- Utilities ----------
+    function showStatus(message, type = 'info') {
+      const statusDiv = document.getElementById('status');
+      const cls = type === 'success' ? 'success' : (type === 'error' ? 'error' : 'info');
+      statusDiv.innerHTML = `<div class="msg ${cls}">${message}</div>`;
+    }
+
+    function logColumn(message) {
+      detectedColumnsLog.push(message);
+      renderColumnLogs();
+    }
+
+    function renderColumnLogs() {
+      const logsDiv = document.getElementById('columnLogs');
+      if (detectedColumnsLog.length === 0) {
+        logsDiv.innerHTML = '<div class="log-line">No processing yet — column logs will appear here after processing.</div>';
+        return;
+      }
+      logsDiv.innerHTML = detectedColumnsLog.map(l => `<div class="log-line">${l}</div>`).join('');
+    }
+
+    function cleanAgentName(agentName) {
+      if (!agentName) return '';
+      let cleaned = agentName.replace(/^[A-Z]{3}[A-Z0-9-]*\s*-\s*/i, '');
+      const parts = cleaned.trim().split(/\s+/);
+      if (parts.length >= 2) return `${parts[0]} ${parts[1]}`;
+      return cleaned.trim();
+    }
+
+    function extractOfficeCode(agentName) {
+      if (!agentName) return '';
+      const match = agentName.match(/^([A-Z]{3}[A-Z0-9-]*)\s*-?\s*/i);
+      return match ? match[1].toUpperCase() : '';
+    }
+
+    function findColumnIndex(headers, candidates) {
+      for (let i = 0; i < headers.length; i++) {
+        const header = headers[i]?.toString().toLowerCase() || '';
+        for (const candidate of candidates) {
+          if (header.includes(candidate.toLowerCase())) return i;
+        }
+      }
+      return -1;
+    }
+
+    // ---------- File parsing with progress ----------
+    function parseFile(file, progressCallback) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        let lastProgress = 0;
+
+        reader.onprogress = function(e) {
+          if (e.lengthComputable) {
+            const pct = Math.floor((e.loaded / e.total) * 90); // up to 90% while reading
+            if (pct !== lastProgress) {
+              lastProgress = pct;
+              progressCallback(pct);
+            }
+          }
+        };
+
+        reader.onload = function(e) {
+          try {
+            progressCallback(95); // near done
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+            progressCallback(100);
+            resolve(jsonData);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = function(err) {
+          reject(err);
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // ---------- Drag & Drop wiring ----------
+    function wireDropzone(dropId, inputId, textId) {
+      const drop = document.getElementById(dropId);
+      const input = document.getElementById(inputId);
+      const text = document.getElementById(textId);
+
+      drop.addEventListener('click', () => input.click());
+
+      drop.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        drop.classList.add('dragover');
+      });
+      drop.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        drop.classList.remove('dragover');
+      });
+      drop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        drop.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+          input.files = e.dataTransfer.files;
+          text.innerText = input.files[0].name;
+        }
+      });
+
+      input.addEventListener('change', () => {
+        if (input.files && input.files[0]) {
+          text.innerText = input.files[0].name;
+        } else {
+          text.innerText = 'Drop a file here, or click to choose';
+        }
+      });
+    }
+
+    wireDropzone('dialerDrop', 'dialerFile', 'dialerDropText');
+    wireDropzone('abstraktDrop', 'abstraktFile', 'abstraktDropText');
+
+    // ---------- Main analyze function (original logic preserved) ----------
+    function analyzeData(dialerRaw, abstraktRaw) {
+      // Reset column logs for this run
+      detectedColumnsLog = [];
+      renderColumnLogs();
+
+      const dialerHeaders = dialerRaw[0] || [];
+      const dialerRows = dialerRaw.slice(1);
+
+      const abstraktHeaders = abstraktRaw[0] || [];
+      const abstraktRows = abstraktRaw.slice(1);
+
+      // Candidates for automatic detection (expanded)
+      const dialerAgentCol = findColumnIndex(dialerHeaders, ['agent', 'name', 'agent name', 'agent_name', 'agentname', 'agentid']);
+      const dialerCampaignCol = findColumnIndex(dialerHeaders, ['campaign', 'campaign name', 'campaign_name', 'list name']);
+      const dialerCallsCol = findColumnIndex(dialerHeaders, ['calls', 'call count', 'total calls', 'call_count', 'total_call']);
+
+      const abstraktAgentCol = findColumnIndex(abstraktHeaders, ['agent', 'name', 'agent name', 'agent_name']);
+      const abstraktCallsCol = findColumnIndex(abstraktHeaders, ['calls', 'call count', 'total calls', 'call_count']);
+
+      // Log detection results
+      logColumn(`Dialer headers detected: [${dialerHeaders.map(h => h || '').join(' | ')}]`);
+      logColumn(`Abstrakt headers detected: [${abstraktHeaders.map(h => h || '').join(' | ')}]`);
+      logColumn(`Detected Dialer Agent column index: ${dialerAgentCol}`);
+      logColumn(`Detected Dialer Campaign column index: ${dialerCampaignCol}`);
+      logColumn(`Detected Dialer Calls column index: ${dialerCallsCol}`);
+      logColumn(`Detected Abstrakt Agent column index: ${abstraktAgentCol}`);
+      logColumn(`Detected Abstrakt Calls column index: ${abstraktCallsCol}`);
+
+      // Warnings if missing columns
+      if (dialerAgentCol === -1 || dialerCampaignCol === -1 || dialerCallsCol === -1) {
+        const missing = [];
+        if (dialerAgentCol === -1) missing.push('Dialer Agent');
+        if (dialerCampaignCol === -1) missing.push('Dialer Campaign');
+        if (dialerCallsCol === -1) missing.push('Dialer Calls');
+        throw new Error('Missing required columns in Dialer data: ' + missing.join(', '));
+      }
+      if (abstraktAgentCol === -1 || abstraktCallsCol === -1) {
+        const missing = [];
+        if (abstraktAgentCol === -1) missing.push('Abstrakt Agent');
+        if (abstraktCallsCol === -1) missing.push('Abstrakt Calls');
+        throw new Error('Missing required columns in Abstrakt data: ' + missing.join(', '));
+      }
+
+// ---------- NEW: Aggregate by AGENT (not agent+campaign) ----------
+const agentMap = new Map();
+
+// Dialer aggregation
+dialerRows.forEach(row => {
+  const rawAgent = row[dialerAgentCol];
+  const campaign = row[dialerCampaignCol];
+  const calls = parseInt(row[dialerCallsCol]) || 0;
+  if (!rawAgent || !campaign) return;
+
+  const agentName = cleanAgentName(rawAgent);
+  const officeCode = extractOfficeCode(rawAgent);
+
+  if (!agentMap.has(agentName)) {
+    agentMap.set(agentName, {
+      officeCode,
+      agentName,
+      campaigns: new Set(),
+      totalDialerCalls: 0,
+      totalAbstraktCalls: 0
+    });
+  }
+
+  const agent = agentMap.get(agentName);
+  agent.campaigns.add(campaign);
+  agent.totalDialerCalls += calls;
+});
+
+// Abstrakt aggregation
+abstraktRows.forEach(row => {
+  const rawAgent = row[abstraktAgentCol];
+  const calls = parseInt(row[abstraktCallsCol]) || 0;
+  if (!rawAgent) return;
+
+  const agentName = cleanAgentName(rawAgent);
+  if (!agentMap.has(agentName)) return;
+
+  agentMap.get(agentName).totalAbstraktCalls += calls;
+});
+
+// Build final result rows (ONE ROW PER AGENT)
+const results = [];
+agentMap.forEach(agent => {
+  const compliance =
+    agent.totalDialerCalls > 0
+      ? (agent.totalAbstraktCalls / agent.totalDialerCalls) * 100
+      : 0;
+
+  results.push({
+    officeCode: agent.officeCode,
+    campaignName: Array.from(agent.campaigns).join(', '), // ✅ Column B
+    agentName: agent.agentName,
+    dialerCallCount: agent.totalDialerCalls,
+    abstraktCallCount: agent.totalAbstraktCalls,
+    agentTotalDialerCalls: agent.totalDialerCalls,
+    complianceRate: Math.round(compliance * 100) / 100
+  });
+});
+
+return results.sort((a, b) => {
+  if (a.officeCode !== b.officeCode)
+    return a.officeCode.localeCompare(b.officeCode);
+  return a.agentName.localeCompare(b.agentName);
+});
+
+
+      return results.sort((a, b) => {
+        if (a.officeCode !== b.officeCode) return a.officeCode.localeCompare(b.officeCode);
+        if (a.campaignName !== b.campaignName) return a.campaignName.localeCompare(b.campaignName);
+        const aFirst = a.agentName.split(' ')[0].toLowerCase();
+        const bFirst = b.agentName.split(' ')[0].toLowerCase();
+        return aFirst.localeCompare(bFirst);
+      });
+    }
+
+    // ---------- UI Renderers (extended) ----------
+    function displayResults() {
+      const resultsDiv = document.getElementById('results');
+      const summaryDiv = document.getElementById('summary');
+      const dataTableDiv = document.getElementById('dataTable');
+
+      // Overall Summary stats
+      const totalAgents = new Set(processedData.map(r => r.agentName)).size;
+      const totalCampaigns = new Set(processedData.map(r => r.campaignName)).size;
+      const totalDialerCalls = processedData.reduce((acc, r) => acc + r.dialerCallCount, 0);
+
+      // Unique agent rows
+      const uniqueAgentData = [];
+      const seenAgents = new Set();
+      processedData.forEach(row => {
+        if (!seenAgents.has(row.agentName)) {
+          seenAgents.add(row.agentName);
+          uniqueAgentData.push(row);
+        }
+      });
+      const totalAbstraktCalls = uniqueAgentData.reduce((acc, r) => acc + r.abstraktCallCount, 0);
+      const overallCompliance = totalDialerCalls > 0 ? (totalAbstraktCalls / totalDialerCalls) * 100 : 0;
+
+      summaryDiv.innerHTML = `
+        <div class="summary-card"><h3>Total Agents (Overall)</h3><div class="number">${totalAgents}</div></div>
+        <div class="summary-card"><h3>Total Campaigns (Overall)</h3><div class="number">${totalCampaigns}</div></div>
+        <div class="summary-card"><h3>Total Dialer Calls (Overall)</h3><div class="number">${totalDialerCalls.toLocaleString()}</div></div>
+        <div class="summary-card"><h3>Total Abstrakt Calls (Overall)</h3><div class="number">${totalAbstraktCalls.toLocaleString()}</div></div>
+        <div class="summary-card"><h3>Overall Compliance Rate</h3><div class="number">${overallCompliance.toFixed(2)}%</div></div>
+      `;
+
+      // Build enhanced table with per-agent chart button
+      let tableHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Office Code</th>
+              <th>Campaign Name</th>
+              <th>Agent Name</th>
+              <th>Dialer Call Count (Campaign)</th>
+              <th>Abstrakt Call Count (Agent Total)</th>
+              <th>Compliance Rate (%) (Agent Total)</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      processedData.forEach(row => {
+        tableHTML += `
+          <tr>
+            <td>${row.officeCode}</td>
+            <td>${row.campaignName}</td>
+            <td>${row.agentName}</td>
+            <td>${row.dialerCallCount}</td>
+            <td>${row.abstraktCallCount}</td>
+            <td>${row.complianceRate}%</td>
+            <td>
+              <button onclick="downloadAgentChart('${encodeURIComponent(row.agentName)}')" title="Download chart for ${row.agentName}">Download Agent Chart</button>
+            </td>
+          </tr>
+        `;
+      });
+
+      tableHTML += `</tbody></table>`;
+      dataTableDiv.innerHTML = tableHTML;
+      resultsDiv.style.display = 'block';
+    }
+
+    function displayOutliers(data) {
+      const outliersDiv = document.getElementById('outlierSummaries');
+      const uniqueOutliers = [];
+      const seenAgents = new Set();
+      data.forEach(row => {
+        if (row.complianceRate < 50 && !seenAgents.has(row.agentName)) {
+          seenAgents.add(row.agentName);
+          uniqueOutliers.push(row);
+        }
+      });
+
+      if (uniqueOutliers.length === 0) {
+        outliersDiv.innerHTML = '<div class="msg success">No agents found with compliance rate below 50%. Great job!</div>';
+        return;
+      }
+
+      uniqueOutliers.sort((a, b) => a.complianceRate - b.complianceRate);
+
+      let tableHTML = `
+        <div class="msg error">Found ${uniqueOutliers.length} agent(s) requiring attention (compliance below 50%).</div>
+        <table class="office-summary-table">
+          <thead>
+            <tr>
+              <th>Office Code</th>
+              <th>Agent Name</th>
+              <th>Total Dialer Calls</th>
+              <th>Total Abstrakt Calls</th>
+              <th>Compliance Rate (%)</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      uniqueOutliers.forEach(row => {
+        tableHTML += `
+          <tr>
+            <td>${row.officeCode}</td>
+            <td>${row.agentName}</td>
+            <td>${row.agentTotalDialerCalls.toLocaleString()}</td>
+            <td>${row.abstraktCallCount.toLocaleString()}</td>
+            <td><strong style="color:${row.complianceRate < 50 ? 'var(--danger)' : 'var(--brand)'}">${row.complianceRate}%</strong></td>
+          </tr>
+        `;
+      });
+
+      tableHTML += `</tbody></table>`;
+      outliersDiv.innerHTML = tableHTML;
+    }
+
+    function getOfficeReportsForCharts(data) {
+      const officeDataMap = new Map();
+      data.forEach(row => {
+        const officeCode = row.officeCode || 'UNKNOWN';
+        if (!officeDataMap.has(officeCode)) {
+          officeDataMap.set(officeCode, {dialerCalls: 0, abstraktCalls: 0, agentNames: new Set()});
+        }
+        const officeEntry = officeDataMap.get(officeCode);
+        officeEntry.dialerCalls += row.dialerCallCount;
+        if (!officeEntry.agentNames.has(row.agentName)) {
+          officeEntry.abstraktCalls += row.abstraktCallCount;
+          officeEntry.agentNames.add(row.agentName);
+        }
+      });
+
+      const chartReports = [];
+      Array.from(officeDataMap.keys()).sort().forEach(officeCode => {
+        const officeEntry = officeDataMap.get(officeCode);
+        const officeDialerCalls = officeEntry.dialerCalls;
+        const officeAbstraktCalls = officeEntry.abstraktCalls;
+        const rate = officeDialerCalls > 0 ? (officeAbstraktCalls / officeDialerCalls) * 100 : 0;
+        if (officeDialerCalls > 0) {
+          chartReports.push({
+            OfficeCode: officeCode,
+            CompliantUsage: officeAbstraktCalls,
+            NonCompliantGap: Math.max(0, officeDialerCalls - officeAbstraktCalls),
+            ComplianceRate: rate.toFixed(1)
+          });
+        }
+      });
+      return chartReports;
+    }
+
+    function displayAllOfficeSummaries(data) {
+      const allOfficeSummariesDiv = document.getElementById('allOfficeSummaries');
+      allOfficeSummariesDiv.innerHTML = '';
+
+      const officeDataMap = new Map();
+      data.forEach(row => {
+        const officeCode = row.officeCode || 'UNKNOWN';
+        if (!officeDataMap.has(officeCode)) {
+          officeDataMap.set(officeCode, {dialerCalls: 0, abstraktCalls: 0, agentNames: new Set()});
+        }
+        const officeEntry = officeDataMap.get(officeCode);
+        officeEntry.dialerCalls += row.dialerCallCount;
+        if (!officeEntry.agentNames.has(row.agentName)) {
+          officeEntry.abstraktCalls += row.abstraktCallCount;
+          officeEntry.agentNames.add(row.agentName);
+        }
+      });
+
+      const sortedOfficeCodes = Array.from(officeDataMap.keys()).sort();
+      sortedOfficeCodes.forEach(officeCode => {
+        const officeEntry = officeDataMap.get(officeCode);
+        const officeDialerCalls = officeEntry.dialerCalls;
+        const officeAbstraktCalls = officeEntry.abstraktCalls;
+        const uniqueAgentsInOffice = officeEntry.agentNames.size;
+        const officeComplianceRate = officeDialerCalls > 0 ? (officeAbstraktCalls / officeDialerCalls) * 100 : 0;
+
+        let officeSummaryHTML = `
+          <h4 style="margin-top:14px;margin-bottom:8px;">Summary for ${officeCode}</h4>
+          <table class="office-summary-table">
+            <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Total Dialer Calls</td><td>${officeDialerCalls.toLocaleString()}</td></tr>
+              <tr><td>Total Abstrakt Calls (Unique Agents)</td><td>${officeAbstraktCalls.toLocaleString()}</td></tr>
+              <tr><td>Compliance Rate (%)</td><td>${officeComplianceRate.toFixed(2)}%</td></tr>
+              <tr><td>Unique Agents in Office</td><td>${uniqueAgentsInOffice}</td></tr>
+            </tbody>
+          </table>
+        `;
+        allOfficeSummariesDiv.innerHTML += officeSummaryHTML;
+      });
+    }
+
+    // ---------- Downloads (original functions preserved and extended) ----------
+    function downloadResults() {
+      if (!processedData || processedData.length === 0) {
+        showStatus('No data to download', 'error');
+        return;
+      }
+      const wb = XLSX.utils.book_new();
+
+      // Detailed
+      const aoaDetailed = [
+        ['Office Code', 'Campaign Name', 'Agent Name', 'Dialer Call Count (Campaign)', 'Abstrakt Call Count (Agent Total)', 'Compliance Rate (%)'],
+      ];
+      processedData.forEach(row => {
+        aoaDetailed.push([row.officeCode, row.campaignName, row.agentName, row.dialerCallCount, row.abstraktCallCount, row.complianceRate]);
+      });
+      const wsDetailed = XLSX.utils.aoa_to_sheet(aoaDetailed);
+      XLSX.utils.book_append_sheet(wb, wsDetailed, 'Detailed Results');
+
+      // Office summary
+      const officeDataMapForDownload = new Map();
+      processedData.forEach(row => {
+        const officeCode = row.officeCode || 'UNKNOWN';
+        if (!officeDataMapForDownload.has(officeCode)) {
+          officeDataMapForDownload.set(officeCode, {dialerCalls:0, abstraktCalls:0, agentNames:new Set()});
+        }
+        const officeEntry = officeDataMapForDownload.get(officeCode);
+        officeEntry.dialerCalls += row.dialerCallCount;
+        if (!officeEntry.agentNames.has(row.agentName)) {
+          officeEntry.abstraktCalls += row.abstraktCallCount;
+          officeEntry.agentNames.add(row.agentName);
+        }
+      });
+
+      const aoaOfficeSummary = [['Office Code','Total Dialer Calls','Total Abstrakt Calls','Compliance Rate (%)','Unique Agents']];
+      Array.from(officeDataMapForDownload.keys()).sort().forEach(officeCode => {
+        const officeEntry = officeDataMapForDownload.get(officeCode);
+        const officeDialerCalls = officeEntry.dialerCalls;
+        const officeAbstraktCalls = officeEntry.abstraktCalls;
+        const uniqueAgentsInOffice = officeEntry.agentNames.size;
+        const overallOfficeComplianceRate = officeDialerCalls > 0 ? (officeAbstraktCalls / officeDialerCalls) * 100 : 0;
+        aoaOfficeSummary.push([officeCode, officeDialerCalls, officeAbstraktCalls, overallOfficeComplianceRate.toFixed(2), uniqueAgentsInOffice]);
+      });
+      const wsOfficeSummary = XLSX.utils.aoa_to_sheet(aoaOfficeSummary);
+      XLSX.utils.book_append_sheet(wb, wsOfficeSummary, 'Office Summaries');
+
+      // Outliers
+      const aoaOutliers = [['Office Code','Agent Name','Total Dialer Calls','Total Abstrakt Calls','Compliance Rate (%)']];
+      const seenOutlierAgents = new Set();
+      processedData.forEach(row => {
+        if (row.complianceRate < 50 && !seenOutlierAgents.has(row.agentName)) {
+          seenOutlierAgents.add(row.agentName);
+          aoaOutliers.push([row.officeCode, row.agentName, row.agentTotalDialerCalls, row.abstraktCallCount, row.complianceRate]);
+        }
+      });
+      if (aoaOutliers.length > 1) {
+        const wsOutliers = XLSX.utils.aoa_to_sheet(aoaOutliers);
+        XLSX.utils.book_append_sheet(wb, wsOutliers, 'Outlier Agents');
+      }
+
+      const now = new Date();
+      const filename = `call_center_analysis_${now.toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      showStatus(`Results downloaded as ${filename}`, 'success');
+    }
+
+    function downloadForBrittany() {
+      const excludedCodes = ['CAG01', 'CAG01PM', 'CAG01SC'];
+      const filteredData = processedData.filter(row => !excludedCodes.includes(row.officeCode));
+      if (filteredData.length === 0) { showStatus('No data to download for this report.', 'error'); return; }
+      const wb = XLSX.utils.book_new();
+      const aoaFiltered = [['Office Code','Campaign Name','Agent Name','Dialer Call Count','Abstrakt Call Count','Compliance Rate (%)']];
+      filteredData.forEach(row => aoaFiltered.push([row.officeCode, row.campaignName, row.agentName, row.dialerCallCount, row.abstraktCallCount, row.complianceRate]));
+      const wsFiltered = XLSX.utils.aoa_to_sheet(aoaFiltered);
+      XLSX.utils.book_append_sheet(wb, wsFiltered, 'Brittany Report');
+      const now = new Date();
+      const filename = `brittany_report_${now.toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      showStatus(`Report downloaded as ${filename}`, 'success');
+    }
+
+    // ---------- Chart downloads ----------
+    function downloadAgentChart(encodedAgentName) {
+      // Find first processedData row for the agent
+      const agentName = decodeURIComponent(encodedAgentName);
+      const row = processedData.find(r => r.agentName === agentName);
+      if (!row) { showStatus(`Agent ${agentName} not found.`, 'error'); return; }
+
+      const compliant = row.abstraktCallCount;
+      const total = row.agentTotalDialerCalls || 0;
+      const missing = Math.max(0, total - compliant);
+
+      // Render chart on hidden canvas
+      const canvas = document.getElementById('tempChartCanvas');
+      canvas.width = 700;
+      canvas.height = 700;
+      const ctx = canvas.getContext('2d');
+      // Clear previous
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      const cfg = {
+        type: 'pie',
+        data: {
+          labels: [`In Abstrakt (${(total>0?((compliant/total)*100).toFixed(1):0)}%)`, 'Not in Abstrakt'],
+          datasets: [{data:[compliant, missing], backgroundColor:['#28a745', '#dc3545']}]
+        },
+        options:{
+          responsive:false,
+          title:{display:true,text:`Agent: ${agentName} — ${row.officeCode}`},
+          legend:{position:'bottom'}
+        }
+      };
+
+      // create/destroy to ensure fresh
+      const chartInstance = new Chart(ctx, cfg);
+      chartInstance.draw();
+
+      // Download PNG
+      const imageURL = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = imageURL;
+      a.download = `Agent_Chart_${agentName.replace(/\s+/g,'_')}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      chartInstance.destroy();
+      showStatus(`Downloaded chart for ${agentName}`, 'success');
+    }
+
+    async function downloadOfficeComplianceCharts() {
+      if (!aggregatedChartData || aggregatedChartData.length === 0) {
+        showStatus("No aggregated office data available. Please process files first.", 'error');
+        return;
+      }
+
+      showStatus(`Generating ${aggregatedChartData.length} office chart(s)...`, 'info');
+      const progressEl = document.getElementById('chartProgress');
+      const progressPct = document.getElementById('chartProgressPct');
+      progressEl.value = 0; progressPct.innerText = '0%';
+
+      const canvas = document.getElementById('tempChartCanvas');
+      canvas.width = 700; canvas.height = 700;
+      const ctx = canvas.getContext('2d');
+
+      for (let i = 0; i < aggregatedChartData.length; i++) {
+        const report = aggregatedChartData[i];
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+
+        const cfg = {
+          type:'pie',
+          data:{
+            labels:[`Total Calls IN Abstrakt (${report.ComplianceRate}%)`, 'Total Calls NOT IN Abstrakt'],
+            datasets:[{data:[report.CompliantUsage, report.NonCompliantGap], backgroundColor:['#28a745', '#dc3545'] }]
+          },
+          options:{responsive:false, title:{display:true,text:`Office ${report.OfficeCode} — Compliance ${report.ComplianceRate}%`}, legend:{position:'bottom'}}
+        };
+
+        const chartInstance = new Chart(ctx, cfg);
+        chartInstance.draw();
+
+        // trigger download
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Compliance_Report_${report.OfficeCode}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        chartInstance.destroy();
+
+        // update progress
+        const pct = Math.round(((i+1)/aggregatedChartData.length)*100);
+        progressEl.value = pct;
+        progressPct.innerText = `${pct}%`;
+      }
+
+      showStatus(`Successfully generated and downloaded charts for ${aggregatedChartData.length} office(s).`, 'success');
+    }
+
+    // ---------- Main process flow ----------
+    async function processFiles() {
+      const dialerFileEl = document.getElementById('dialerFile');
+      const abstraktFileEl = document.getElementById('abstraktFile');
+
+      const dialerFile = dialerFileEl.files[0];
+      const abstraktFile = abstraktFileEl.files[0];
+
+      if (!dialerFile) { showStatus('Please select a Dialer data file', 'error'); return; }
+      if (!abstraktFile) { showStatus('Please select an Abstrakt file', 'error'); return; }
+
+      try {
+        showStatus('Processing files...', 'info');
+        detectedColumnsLog = [];
+        renderColumnLogs();
+
+        // file progress UI
+        const fileProgress = document.getElementById('fileProgress');
+        const fileProgressPct = document.getElementById('fileProgressPct');
+        fileProgress.value = 0; fileProgressPct.innerText = '0%';
+
+        // Read dialer file
+        dialerData = await parseFile(dialerFile, (pct) => {
+          fileProgress.value = pct * 0.4; // dialer read is first 40%
+          fileProgressPct.innerText = `${Math.round(fileProgress.value)}%`;
+        });
+
+        // Read abstrakt file
+        abstraktData = await parseFile(abstraktFile, (pct) => {
+          fileProgress.value = 40 + pct * 0.4; // abstrakt read next 40%
+          fileProgressPct.innerText = `${Math.round(fileProgress.value)}%`;
+        });
+
+        // small simulated processing progress
+        let sim = 80;
+        const simInterval = setInterval(() => {
+          sim += 4;
+          if (sim > 96) sim = 96;
+          fileProgress.value = sim;
+          fileProgressPct.innerText = `${Math.round(sim)}%`;
+        }, 120);
+
+        // analyze (this is synchronous)
+        processedData = analyzeData(dialerData, abstraktData);
+
+        // stop simulated progress
+        clearInterval(simInterval);
+        fileProgress.value = 100; fileProgressPct.innerText = '100%';
+
+        // Prepare aggregated chart data
+        aggregatedChartData = getOfficeReportsForCharts(processedData);
+
+        // render results
+        displayResults();
+        displayAllOfficeSummaries(processedData);
+        displayOutliers(processedData);
+
+        showStatus('Files processed successfully! Ready for downloads and charts.', 'success');
+      } catch (err) {
+        console.error(err);
+        showStatus(`Error processing files: ${err.message || err}`, 'error');
+      }
+    }
+
+    // Initialize small default log message
+    renderColumnLogs();
+  </script>
+</body>
+</html>
